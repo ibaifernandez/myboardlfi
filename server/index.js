@@ -79,5 +79,11 @@ app.get('/api/health', (_req, res) =>
 
 app.listen(PORT, () => {
   console.log(`MyBoardLFi server → http://localhost:${PORT}`);
-  require('./digest').startDigestScheduler();
+  // Digest automático solo en desarrollo local — en producción se envía
+  // bajo demanda desde el botón "Enviarme mis tareas" del Toolbar.
+  // Reactivar cuando la migración a Supabase esté completa y cada
+  // usuario tenga sus propias tareas.
+  if (process.env.NODE_ENV !== 'production') {
+    require('./digest').startDigestScheduler();
+  }
 });
