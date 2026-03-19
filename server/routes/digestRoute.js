@@ -1,29 +1,22 @@
 const express = require('express');
 const { sendDigest } = require('../digest');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
 // POST /api/digest/send-me
-// Sends the task digest to the authenticated user's email
-router.post('/send-me', requireAuth, async (req, res) => {
-  const { email, name } = req.user;
-
-  if (!email) {
-    return res.status(400).json({ error: 'No se pudo determinar el email del usuario.' });
+// Sends the admin usage digest to DIGEST_TO (superadmin only).
+router.post('/send-me', requireAuth, requireRole('admin', 'superadmin'), async (req, res) => {
+  const recipient = process.env.DIGEST_TO;
+  if (!recipient) {
+    return res.status(500).json({ error: 'DIGEST_TO no configurado en el servidor.' });
   }
 
   try {
-    const result = await sendDigest(email);
-
-    if (result.cardCount === 0) {
-      return res.json({ ok: true, message: '¡No tienes tareas pendientes urgentes ni con fecha límite próxima! 🎉' });
-    }
-
+    await sendDigest(recipient);
     return res.json({
       ok: true,
-      message: `Digest enviado a ${email} con ${result.cardCount} tarea${result.cardCount !== 1 ? 's' : ''}.`,
-      cardCount: result.cardCount,
+      message: `Digest de administración enviado a ${recipient}.`,
     });
   } catch (err) {
     console.error('[digest/send-me]', err.message);

@@ -25,9 +25,13 @@ import { CategoriesContext } from './context/CategoriesContext.jsx';
 export default function App() {
   const { isAuthenticated, user, logout } = useAuth();
 
-  // Supabase recovery links land on /reset-password with the token in the hash
-  if (window.location.pathname === '/reset-password') {
-    return <ResetPasswordPage onDone={() => { logout(); window.history.replaceState({}, '', '/'); }} />;
+  // Supabase recovery links land on / with type=recovery in the hash
+  const hash = window.location.hash;
+  if (
+    window.location.pathname === '/reset-password' ||
+    (hash.includes('type=recovery') && hash.includes('access_token='))
+  ) {
+    return <ResetPasswordPage onDone={() => { logout(); window.location.replace('/'); }} />;
   }
 
   if (!isAuthenticated) return <LoginPage />;

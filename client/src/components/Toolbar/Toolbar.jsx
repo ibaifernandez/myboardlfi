@@ -210,12 +210,13 @@ export function Toolbar({ boardTitle, filters, onFilterChange, availableTags = [
           </button>
         )}
 
-        {/* Send digest button */}
+        {/* Admin digest button — only for admins */}
+        {(user?.role === 'admin' || user?.role === 'superadmin') && (
         <div className="relative">
           <button
             onClick={handleSendDigest}
             disabled={digestState === 'sending'}
-            title="Enviarme mis tareas por email"
+            title="Enviarme el resumen de administración"
             className={`p-1.5 rounded transition-colors
               ${digestState === 'ok'    ? 'text-green-400 bg-green-400/10' :
                 digestState === 'error' ? 'text-red-400 bg-red-400/10' :
@@ -231,6 +232,7 @@ export function Toolbar({ boardTitle, filters, onFilterChange, availableTags = [
             </div>
           )}
         </div>
+        )}
 
         {/* Settings button — manage categories */}
         <button
