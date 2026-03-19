@@ -1,0 +1,130 @@
+const express = require('express');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const { supabaseAdmin } = require('../utils/supabase');
+const { requireAuth } = require('../middleware/auth');
+
+const router = express.Router();
+
+// ── Dominios corporativos permitidos ──────────────────────────────────────────
+const ALLOWED_DOMAINS = ['lfi.la', 'lafabricaimaginaria.com'];
+
+function isAllowedEmail(email) {
+  const domain = email.split('@')[1]?.toLowerCase();
+  return ALLOWED_DOMAINS.includes(domain);
+}
+
+// ── POST /api/auth/register ───────────────────────────────────────────────────
+router.post('/register', async (req, res) => {
+  const { email, password, name, organizationId, role = 'colaborador' } = req.body;
+
+  if (!email || !password || !name) {
+    return res.status(400).json({ error: 'email, password y name son requeridos' });
+  }
+
+  if (!isAllowedEmail(email)) {
+    return res.status(403).json({
+      error: `Acceso restringido. Solo se permiten cuentas corporativas (@lfi.la, @lafabricaimaginaria.com).`,
+    });
+  }
+
+  // 1. Create user in Supabase Auth
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (authError) {
+    return res.status(400).json({ error: authError.message });
+  }
+
+  const userId = authData.user.id;
+
+  // 2. Insert profile in public.users table
+  const { error: profileError } = await supabaseAdmin
+    .from('users')
+    .insert({ id: userId, email, name, role, organization_id: organizationId || null });
+
+  if (profileError) {
+    return res.status(500).json({ error: profileError.message });
+  }
+
+  // 3. Build JWT
+  const token = jwt.sign(
+    { id: userId, email, name, role, organizationId: organizationId || null },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  return res.status(201).json({ token, user: { id: userId, email, name, role } });
+});
+
+// ── POST /api/auth/login ──────────────────────────────────────────────────────
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email y password son requeridos' });
+  }
+
+  if (!isAllowedEmail(email)) {
+    return res.status(403).json({
+      error: `Acceso restringido. Solo se permiten cuentas corporativas (@lfi.la, @lafabricaimaginaria.com).`,
+    });
+  }
+
+  // 1. Authenticate via Supabase Auth
+  const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (authError) {
+    return res.status(401).json({ error: 'Credenciales incorrectas' });
+  }
+
+  const userId = authData.user.id;
+
+  // 2. Fetch profile
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) {
+    return res.status(500).json({ error: 'Error al obtener el perfil de usuario' });
+  }
+
+  // 3. Build JWT
+  const token = jwt.sign(
+    {
+      id: userId,
+      email: profile.email,
+      name: profile.name,
+      role: profile.role,
+      organizationId: profile.organization_id,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  return res.json({
+    token,
+    user: {
+      id: userId,
+      email: profile.email,
+      name: profile.name,
+      role: profile.role,
+      organizationId: profile.organization_id,
+    },
+  });
+});
+
+// ── GET /api/auth/me ──────────────────────────────────────────────────────────
+router.get('/me', requireAuth, (req, res) => {
+  return res.json({ user: req.user });
+});
+
+module.exports = router;

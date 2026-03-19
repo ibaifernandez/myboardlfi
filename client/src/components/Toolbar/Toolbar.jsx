@@ -1,0 +1,269 @@
+import { useState, useEffect, useRef } from 'react';
+import { Settings, Search, X, ArrowRight, LogOut, Mail } from 'lucide-react';
+import { PRIORITY_LIST } from '../../utils/constants.js';
+import { useCategoriesCtx } from '../../context/CategoriesContext.jsx';
+import { CategorySettings } from './CategorySettings.jsx';
+import { api } from '../../api/client.js';
+
+export function Toolbar({ boardTitle, filters, onFilterChange, availableTags = [], onSelectBoard, user, onLogout }) {
+  const { category, priority, tag, search = '' } = filters;
+  const { categories } = useCategoriesCtx();
+  const [showSettings,  setShowSettings]  = useState(false);
+  const [digestState,   setDigestState]   = useState('idle'); // 'idle' | 'sending' | 'ok' | 'error'
+  const [digestMsg,     setDigestMsg]     = useState('');
+
+  // Global search state
+  const [globalQ,       setGlobalQ]       = useState('');
+  const [globalResults, setGlobalResults] = useState([]);
+  const [globalOpen,    setGlobalOpen]    = useState(false);
+  const [globalLoading, setGlobalLoading] = useState(false);
+  const timerRef  = useRef(null);
+  const wrapRef   = useRef(null);
+
+  // Debounced fetch
+  useEffect(() => {
+    clearTimeout(timerRef.current);
+    if (globalQ.trim().length < 2) { setGlobalResults([]); setGlobalOpen(false); return; }
+    setGlobalLoading(true);
+    timerRef.current = setTimeout(async () => {
+      try {
+        const results = await api.searchCards(globalQ.trim());
+        setGlobalResults(results);
+        setGlobalOpen(true);
+      } catch { setGlobalResults([]); }
+      finally  { setGlobalLoading(false); }
+    }, 250);
+    return () => clearTimeout(timerRef.current);
+  }, [globalQ]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setGlobalOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  function handleSelectResult(card) {
+    onSelectBoard?.(card.boardId);
+    setGlobalQ('');
+    setGlobalOpen(false);
+  }
+
+  async function handleSendDigest() {
+    setDigestState('sending');
+    setDigestMsg('');
+    try {
+      const token = localStorage.getItem('myboardlfi_token');
+      const res = await fetch('/api/digest/send-me', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Error desconocido');
+      setDigestState('ok');
+      setDigestMsg(json.message);
+    } catch (err) {
+      setDigestState('error');
+      setDigestMsg(err.message);
+    } finally {
+      setTimeout(() => setDigestState('idle'), 4000);
+    }
+  }
+
+  function clearAll() {
+    onFilterChange('category', '');
+    onFilterChange('priority', '');
+    onFilterChange('tag', '');
+    onFilterChange('search', '');
+  }
+
+  const hasActiveFilters = category || priority || tag || search;
+
+  return (
+    <>
+      <header className="h-14 shrink-0 flex items-center gap-3 px-6 border-b border-[#2e3140] bg-[#16181f]">
+        <h1 className="font-semibold text-[#e8eaf0] text-base mr-auto">{boardTitle}</h1>
+
+        {/* Global search (all boards) */}
+        <div ref={wrapRef} className="relative flex items-center">
+          <Search size={13} className="absolute left-2 text-[#555b70] pointer-events-none z-10" />
+          <input
+            type="text"
+            value={globalQ}
+            onChange={(e) => setGlobalQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { setGlobalQ(''); setGlobalOpen(false); }
+            }}
+            onFocus={() => { if (globalResults.length > 0) setGlobalOpen(true); }}
+            placeholder="Buscar en todos los tableros…"
+            className="bg-[#1e2028] border border-[#2e3140] text-[#8b90a0] text-xs rounded-md pl-6 pr-6 py-1.5 w-44 outline-none focus:border-indigo-500 focus:w-64 focus:text-[#e8eaf0] placeholder:text-[#3d4155] transition-all"
+          />
+          {globalQ && (
+            <button
+              onClick={() => { setGlobalQ(''); setGlobalOpen(false); }}
+              className="absolute right-1.5 text-[#555b70] hover:text-[#8b90a0]"
+            >
+              <X size={11} />
+            </button>
+          )}
+
+          {/* Results dropdown */}
+          {globalOpen && (
+            <div className="absolute top-full left-0 mt-1 w-80 bg-[#1e2028] border border-[#2e3140] rounded-xl shadow-2xl z-50 overflow-hidden">
+              {globalLoading ? (
+                <p className="text-xs text-[#555b70] text-center py-4">Buscando…</p>
+              ) : globalResults.length === 0 ? (
+                <p className="text-xs text-[#555b70] text-center py-4">Sin resultados</p>
+              ) : (
+                <ul className="max-h-72 overflow-y-auto py-1">
+                  {globalResults.map((card) => (
+                    <li key={card.id}>
+                      <button
+                        onClick={() => handleSelectResult(card)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-[#252830] transition-colors group"
+                      >
+                        <p className="text-sm text-[#e8eaf0] line-clamp-1 group-hover:text-white">
+                          {card.title}
+                        </p>
+                        <p className="text-[10px] text-[#555b70] flex items-center gap-1 mt-0.5">
+                          <span>{card.boardTitle}</span>
+                          <ArrowRight size={9} />
+                          <span>{card.columnTitle}</span>
+                        </p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Board-scoped search */}
+        <div className="relative flex items-center">
+          <Search size={13} className="absolute left-2 text-[#555b70] pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => onFilterChange('search', e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && onFilterChange('search', '')}
+            placeholder="Filtrar tablero…"
+            className="bg-[#1e2028] border border-[#2e3140] text-[#8b90a0] text-xs rounded-md pl-6 pr-6 py-1.5 w-32 outline-none focus:border-indigo-500 focus:w-44 focus:text-[#e8eaf0] placeholder:text-[#3d4155] transition-all"
+          />
+          {search && (
+            <button
+              onClick={() => onFilterChange('search', '')}
+              className="absolute right-1.5 text-[#555b70] hover:text-[#8b90a0]"
+            >
+              <X size={11} />
+            </button>
+          )}
+        </div>
+
+        {/* Category filter */}
+        <select
+          value={category}
+          onChange={(e) => onFilterChange('category', e.target.value)}
+          className="bg-[#1e2028] border border-[#2e3140] text-[#8b90a0] text-xs rounded-md px-2 py-1.5 outline-none focus:border-indigo-500 cursor-pointer hover:border-[#3d4155] transition-colors"
+        >
+          <option value="">Todas las categorías</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+
+        {/* Priority filter */}
+        <select
+          value={priority}
+          onChange={(e) => onFilterChange('priority', e.target.value)}
+          className="bg-[#1e2028] border border-[#2e3140] text-[#8b90a0] text-xs rounded-md px-2 py-1.5 outline-none focus:border-indigo-500 cursor-pointer hover:border-[#3d4155] transition-colors"
+        >
+          <option value="">Todas las prioridades</option>
+          {PRIORITY_LIST.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </select>
+
+        {/* Tag filter — only shown when there are tags */}
+        {availableTags.length > 0 && (
+          <select
+            value={tag}
+            onChange={(e) => onFilterChange('tag', e.target.value)}
+            className="bg-[#1e2028] border border-[#2e3140] text-[#8b90a0] text-xs rounded-md px-2 py-1.5 outline-none focus:border-indigo-500 cursor-pointer hover:border-[#3d4155] transition-colors"
+          >
+            <option value="">Todas las etiquetas</option>
+            {availableTags.map((t) => (
+              <option key={t} value={t}>#{t}</option>
+            ))}
+          </select>
+        )}
+
+        {/* Clear filters */}
+        {hasActiveFilters && (
+          <button
+            onClick={clearAll}
+            className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            Limpiar filtros
+          </button>
+        )}
+
+        {/* Send digest button */}
+        <div className="relative">
+          <button
+            onClick={handleSendDigest}
+            disabled={digestState === 'sending'}
+            title="Enviarme mis tareas por email"
+            className={`p-1.5 rounded transition-colors
+              ${digestState === 'ok'    ? 'text-green-400 bg-green-400/10' :
+                digestState === 'error' ? 'text-red-400 bg-red-400/10' :
+                'text-[#555b70] hover:text-[#e8eaf0] hover:bg-[#2e3140]'}
+              disabled:opacity-50 disabled:cursor-wait`}
+          >
+            <Mail size={15} />
+          </button>
+          {digestMsg && digestState !== 'idle' && (
+            <div className={`absolute right-0 top-full mt-1.5 z-50 w-64 rounded-lg px-3 py-2 text-xs shadow-xl
+              ${digestState === 'ok' ? 'bg-green-900/80 text-green-300 border border-green-700/50' : 'bg-red-900/80 text-red-300 border border-red-700/50'}`}>
+              {digestMsg}
+            </div>
+          )}
+        </div>
+
+        {/* Settings button — manage categories */}
+        <button
+          onClick={() => setShowSettings(true)}
+          className="p-1.5 rounded text-[#555b70] hover:text-[#e8eaf0] hover:bg-[#2e3140] transition-colors"
+          title="Gestionar categorías"
+        >
+          <Settings size={15} />
+        </button>
+
+        {/* User info + logout */}
+        {user && (
+          <div className="flex items-center gap-2 pl-2 border-l border-[#2e3140]">
+            <div className="flex items-center gap-1.5">
+              <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[10px] font-bold uppercase">
+                {user.name?.[0] ?? user.email?.[0] ?? '?'}
+              </div>
+              <span className="text-xs text-[#8b92a5] hidden lg:block max-w-[120px] truncate">
+                {user.name ?? user.email}
+              </span>
+            </div>
+            <button
+              onClick={onLogout}
+              title="Cerrar sesión"
+              className="p-1.5 rounded text-[#555b70] hover:text-red-400 hover:bg-[#2e3140] transition-colors"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+        )}
+      </header>
+
+      {showSettings && <CategorySettings onClose={() => setShowSettings(false)} />}
+    </>
+  );
+}

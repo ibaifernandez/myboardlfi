@@ -1,0 +1,33 @@
+# ── Dependencias ──────────────────────────────────────────
+node_modules/
+client/node_modules/
+
+# ── Variables de entorno — NUNCA subir al repo ────────────
+.env
+.env.local
+.env.production
+client/.env
+client/.env.local
+client/.env.production
+
+# ── Datos personales y backups ────────────────────────────
+server/data/tasks.personal-backup.json
+server/uploads/*
+!server/uploads/.gitkeep
+
+# ── Builds ────────────────────────────────────────────────
+client/dist/
+dist/
+
+# ── Logs ──────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── Sistema operativo ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDEs ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp

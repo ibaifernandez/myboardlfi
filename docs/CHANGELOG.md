@@ -1,0 +1,110 @@
+# CHANGELOG — MyBoardLFi
+
+Registro de cambios por versión. Formato: [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/)
+
+---
+
+## [0.2.0] — 2026-03-19 — Sesión 1: Phase 1 — Autenticación, Supabase y email
+
+### Infraestructura
+- Proyecto Supabase creado (`myboardlfi`, región São Paulo) y conectado al servidor
+- Schema inicial ejecutado: tablas `organizations`, `users`, `boards`, `columns`, `cards`, `categories` con RLS activado
+- Organización LFi Agency (`id: 00000000-0000-0000-0000-000000000001`, plan `pro`) insertada como tenant base
+- `@supabase/supabase-js` instalado en server y client
+- `jsonwebtoken` y `bcryptjs` instalados en server
+
+### Autenticación
+- `server/utils/supabase.js` — cliente Supabase admin + anon para el servidor
+- `server/middleware/auth.js` — middleware `requireAuth` (JWT) y `requireRole(...roles)`
+- `server/routes/auth.js` — endpoints `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
+- Restricción de dominio corporativo: solo `@lfi.la` y `@lafabricaimaginaria.com` pueden registrarse o iniciar sesión (validación en servidor y en frontend)
+- Usuario superadmin creado: `ibai@lfi.la`, rol `superadmin`, org LFi Agency
+
+### Frontend — Autenticación
+- `client/src/context/AuthContext.jsx` — estado global de sesión (token + user en localStorage)
+- `client/src/pages/LoginPage.jsx` — pantalla de login con logo LFi, validación de dominio, diseño corporativo oscuro
+- `client/src/pages/ResetPasswordPage.jsx` — página de restablecimiento de contraseña (flujo Supabase Auth)
+- `client/src/utils/supabaseClient.js` — cliente Supabase anon para el frontend
+- `client/.env` — variables `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`
+- `client/src/api/client.js` — interceptor JWT: todas las peticiones incluyen `Authorization: Bearer <token>`
+- `client/src/main.jsx` — envuelto en `AuthProvider`
+- `App.jsx` — gate de autenticación: muestra `LoginPage` si no hay sesión; detecta ruta `/reset-password`
+- Flujo "Olvidé mi contraseña" integrado en `LoginPage` (sin página separada)
+- Toolbar actualizado: avatar con inicial, nombre de usuario y botón de logout
+
+### Branding
+- `lfi.png` movido a `client/src/assets/lfi.png`
+- Logo LFi visible en: pantalla de login, sidebar (sustituyendo icono genérico), página de reset de contraseña
+- Sidebar renombrada de "MyBoard" a "MyBoardLFi"
+- Footer del digest actualizado: "MyBoardLFi · © 2026 Ibai Fernández"
+
+### Email — Digest bajo demanda
+- `server/routes/digestRoute.js` — endpoint `POST /api/digest/send-me` (requiere auth JWT)
+- Botón "Enviarme mis tareas" (icono sobre) en Toolbar — envía el digest al email del usuario autenticado
+- Feedback visual en botón: verde si OK, rojo si error, desaparece a los 4 segundos
+- `digest.js` refactorizado: `sendDigest(to?)` acepta destinatario arbitrario; rebrandeado a MyBoardLFi
+
+### SMTP / Email
+- SMTP configurado con Migadu (provisional para pruebas — ver nota de migración)
+- Cuenta Resend creada (`ibai.fernandez@lafabricaimaginaria.com`) — pendiente verificación de dominio por Fernando Murillo
+- ⚠️ **Pendiente migración a Resend** tan pronto `lafabricaimaginaria.com` esté verificado en Resend
+
+### Seguridad
+- Claves Supabase (service_role) solo en servidor, nunca expuestas al cliente
+- Validación de dominio corporativo en dos capas: frontend (UX inmediato) + servidor (fuente de verdad)
+- JWT con expiración de 7 días
+
+---
+
+## [0.1.0] — 2026-03-18 — Sesión 0: Limpieza y documentación inicial
+
+### Fork
+- Proyecto creado como fork de MyBoard (versión personal de Ibai Fernández, Phase 1 completa)
+- Renombrado a MyBoardLFi con enfoque corporativo multi-tenant para LFi
+
+### Eliminado
+- Datos personales de Ibai en `server/data/tasks.json` → respaldados en `tasks.personal-backup.json`
+- Adjuntos personales en `server/uploads/` (5 archivos: 2 PNG, 1 PDF, 1 CSV, 1 MD)
+- `estrategia.ibaifernandez.com.md` de la raíz del proyecto
+- Credenciales SMTP personales (info@ibaifernandez.com) del archivo `.env`
+
+### Añadido
+- **Dummy data corporativa** en `server/data/tasks.json`:
+  - 5 tableros: 🚀 Proyectos Activos, 📧 Campañas Email, 🤝 Clientes, ⚙️ Automatizaciones, 🏢 Operaciones LFi
+  - 18 columnas distribuidas entre los 5 tableros
+  - 30 tarjetas con datos verosímiles de agencia de marketing (prioridades, fechas, checklists, categorías)
+  - 8 categorías: email-marketing, web, social-media, automatizacion, clientes, operaciones, contenido, analytics
+- Variable `PORT=3003` en `.env`
+
+### Modificado
+- **Puertos actualizados de 3001/5173 → 3003/5175:**
+  - `server/index.js`: `PORT = process.env.PORT || 3003`
+  - `client/vite.config.js`: port 5175, proxy → localhost:3003
+  - `.claude/launch.json`: configuraciones actualizadas a 3003/5175
+- `server/index.js`: CORS actualizado para aceptar `localhost:5175`
+
+### Documentación reescrita
+- `CLAUDE.md` — contexto MyBoardLFi, puertos 3003/5175, reglas Phase 0
+- `AGENTS.md` — identidad, comportamiento, convenciones, reglas de datos e IP
+- `README.md` — orientado a gerencia LFi + equipo técnico (Fernando/PRONODO)
+- `docs/ROADMAP.md` — 4 fases: Phase 0→4 con objetivos y entregables
+- `docs/BACKLOG.md` — tareas por fase (Phase 0 completada, Phases 1–3 planificadas)
+- `docs/ARCHITECTURE.md` — arquitectura actual (Phase 0) + arquitectura objetivo (Phase 1) con esquema Supabase, roles, multi-tenancy
+- `docs/DECISIONS.md` — 6 ADRs: Supabase, auth JWT, PRONODO, freemium, IP, fork
+- `docs/PRODUCT.md` — visión de producto para stakeholders LFi, comparativa herramientas, modelo freemium
+
+---
+
+## Versiones heredadas de MyBoard (referencia)
+
+### [0.3.0] — 2026-03-03 (MyBoard personal)
+- Columnas por defecto al crear tablero
+- Búsqueda global
+- Filtros por categoría y prioridad
+
+### [0.2.0] — 2026-03-02 (MyBoard personal)
+- Sistema de categorías via API
+- Drag & drop de columnas y tarjetas
+
+### [0.1.0] — 2026-03-01 (MyBoard personal)
+- MVP inicial: tableros, columnas, tarjetas, CRUD completo

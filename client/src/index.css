@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-[#0f1117] text-[#e8eaf0] font-sans antialiased;
+    margin: 0;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-[#2e3140] rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-[#3d4155];
+  }
+}
+
+@layer utilities {
+  .priority-low    { @apply border-l-[3px] border-l-green-500; }
+  .priority-medium { @apply border-l-[3px] border-l-amber-500; }
+  .priority-high   { @apply border-l-[3px] border-l-red-500; }
+  .priority-urgent { @apply border-l-[3px] border-l-purple-500; }
+}
