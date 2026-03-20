@@ -40,7 +40,7 @@ Crear el archivo `/opt/myboardlfi/.env` en el servidor con las siguientes variab
 PORT=3003
 
 # ── Supabase ──────────────────────────────────────────────
-SUPABASE_URL=https://jowtasxhnluqqcgkeoll.supabase.co
+SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_ANON_KEY=<proporcionada por Ibai>
 SUPABASE_SERVICE_ROLE_KEY=<proporcionada por Ibai — CONFIDENCIAL>
 JWT_SECRET=<string aleatorio seguro — mínimo 32 caracteres>
