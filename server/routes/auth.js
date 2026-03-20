@@ -94,7 +94,7 @@ router.post('/login', async (req, res) => {
     .single();
 
   if (profileError || !profile) {
-    return res.status(500).json({ error: 'Error al obtener el perfil de usuario', debug: profileError?.message ?? 'profile is null' });
+    return res.status(500).json({ error: 'Error al obtener el perfil de usuario' });
   }
 
   // 3. Build JWT

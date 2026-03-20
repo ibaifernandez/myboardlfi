@@ -30,16 +30,9 @@ CREATE POLICY "Los usuarios ven su propio perfil"
   ON public.users FOR SELECT
   USING (auth.uid() = id);
 
-CREATE POLICY "Admins ven todos los usuarios de su org"
-  ON public.users FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.users u
-      WHERE u.id = auth.uid()
-        AND u.role IN ('admin', 'superadmin')
-        AND u.organization_id = users.organization_id
-    )
-  );
+-- NOTA: La policy "Admins ven todos los usuarios de su org" fue eliminada
+-- por causar recursión infinita (SELECT en public.users dentro de policy de public.users).
+-- El servidor usa service_role key que bypasea RLS, por lo que no es necesaria.
 
 -- ── Tabla: boards ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.boards (
