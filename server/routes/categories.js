@@ -1,61 +1,62 @@
-const { v4: uuidv4 } = require('uuid');
-const { readData, writeData } = require('../utils/db');
+const { supabaseAdmin } = require('../utils/supabase');
 
-const getCategories = (req, res) => {
-  try {
-    const data = readData();
-    res.json({ data: data.categories ?? [] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const toCat = (row) => ({
+  id:      row.id,
+  label:   row.label,
+  colorId: row.color_id,
+});
+
+const getCategories = async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from('categories')
+    .select('*')
+    .eq('organization_id', req.user.organizationId);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data: (data || []).map(toCat) });
 };
 
-const createCategory = (req, res) => {
-  try {
-    const { label, colorId } = req.body;
-    if (!label?.trim()) {
-      return res.status(400).json({ error: 'label is required' });
-    }
-    const data = readData();
-    const category = {
-      id: `cat-${uuidv4()}`,
-      label: label.trim(),
-      colorId: colorId || 'blue',
-    };
-    data.categories.push(category);
-    writeData(data);
-    res.status(201).json({ data: category });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const createCategory = async (req, res) => {
+  const { label, colorId } = req.body;
+  if (!label?.trim()) return res.status(400).json({ error: 'label is required' });
+
+  const { data, error } = await supabaseAdmin
+    .from('categories')
+    .insert({ label: label.trim(), color_id: colorId || 'blue', organization_id: req.user.organizationId })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json({ data: toCat(data) });
 };
 
-const updateCategory = (req, res) => {
-  try {
-    const data = readData();
-    const idx = data.categories.findIndex((c) => c.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Category not found' });
-    const { label, colorId } = req.body;
-    if (label     !== undefined) data.categories[idx].label   = label.trim();
-    if (colorId   !== undefined) data.categories[idx].colorId = colorId;
-    writeData(data);
-    res.json({ data: data.categories[idx] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const updateCategory = async (req, res) => {
+  const { label, colorId } = req.body;
+  const update = {};
+  if (label   !== undefined) update.label    = label.trim();
+  if (colorId !== undefined) update.color_id = colorId;
+
+  const { data, error } = await supabaseAdmin
+    .from('categories')
+    .update(update)
+    .eq('id', req.params.id)
+    .eq('organization_id', req.user.organizationId)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data: toCat(data) });
 };
 
-const deleteCategory = (req, res) => {
-  try {
-    const data = readData();
-    const idx = data.categories.findIndex((c) => c.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Category not found' });
-    data.categories.splice(idx, 1);
-    writeData(data);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const deleteCategory = async (req, res) => {
+  const { error } = await supabaseAdmin
+    .from('categories')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('organization_id', req.user.organizationId);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
 };
 
 module.exports = { getCategories, createCategory, updateCategory, deleteCategory };

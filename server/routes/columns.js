@@ -1,74 +1,74 @@
-const { v4: uuidv4 } = require('uuid');
-const { readData, writeData } = require('../utils/db');
+const { supabaseAdmin } = require('../utils/supabase');
 
-const getColumns = (req, res) => {
-  try {
-    const data = readData();
-    const columns = data.columns
-      .filter((c) => c.boardId === req.params.boardId)
-      .sort((a, b) => a.order - b.order);
-    res.json({ data: columns });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const toColumn = (row) => ({
+  id:          row.id,
+  boardId:     row.board_id,
+  title:       row.title,
+  order:       row.order,
+  defaultSort: row.default_sort || null,
+  createdAt:   row.created_at,
+});
+
+const getColumns = async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from('columns')
+    .select('*')
+    .eq('board_id', req.params.boardId)
+    .order('order', { ascending: true });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data: (data || []).map(toColumn) });
 };
 
-const createColumn = (req, res) => {
-  try {
-    const { title } = req.body;
-    if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+const createColumn = async (req, res) => {
+  const { title } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
 
-    const data = readData();
-    const board = data.boards.find((b) => b.id === req.params.boardId);
-    if (!board) return res.status(404).json({ error: 'Board not found' });
+  const { data: existing } = await supabaseAdmin
+    .from('columns')
+    .select('order')
+    .eq('board_id', req.params.boardId)
+    .order('order', { ascending: false })
+    .limit(1);
 
-    const existing = data.columns.filter((c) => c.boardId === req.params.boardId);
-    const maxOrder = existing.reduce((max, c) => Math.max(max, c.order), 0);
+  const maxOrder = existing?.[0]?.order ?? 0;
 
-    const column = {
-      id: `col-${uuidv4()}`,
-      boardId: req.params.boardId,
-      title: title.trim(),
-      order: maxOrder + 1,
-    };
-    data.columns.push(column);
-    writeData(data);
-    res.status(201).json({ data: column });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const { data, error } = await supabaseAdmin
+    .from('columns')
+    .insert({ board_id: req.params.boardId, title: title.trim(), order: maxOrder + 1 })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json({ data: toColumn(data) });
 };
 
-const updateColumn = (req, res) => {
-  try {
-    const { title, order, defaultSort } = req.body;
-    const data = readData();
-    const idx = data.columns.findIndex((c) => c.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Column not found' });
+const updateColumn = async (req, res) => {
+  const { title, order, defaultSort } = req.body;
+  const update = {};
+  if (title?.trim())         update.title        = title.trim();
+  if (order !== undefined)   update.order        = order;
+  if (defaultSort !== undefined) update.default_sort = defaultSort;
 
-    if (title?.trim()) data.columns[idx].title = title.trim();
-    if (order !== undefined) data.columns[idx].order = order;
-    if (defaultSort !== undefined) data.columns[idx].defaultSort = defaultSort;
-    writeData(data);
-    res.json({ data: data.columns[idx] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const { data, error } = await supabaseAdmin
+    .from('columns')
+    .update(update)
+    .eq('id', req.params.id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data: toColumn(data) });
 };
 
-const deleteColumn = (req, res) => {
-  try {
-    const data = readData();
-    const idx = data.columns.findIndex((c) => c.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Column not found' });
+const deleteColumn = async (req, res) => {
+  const { error } = await supabaseAdmin
+    .from('columns')
+    .delete()
+    .eq('id', req.params.id);
 
-    data.columns.splice(idx, 1);
-    data.cards = data.cards.filter((c) => c.columnId !== req.params.id);
-    writeData(data);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
 };
 
 module.exports = { getColumns, createColumn, updateColumn, deleteColumn };

@@ -17,8 +17,9 @@ const {
 } = require('./routes/cards');
 const { getCategories, createCategory, updateCategory, deleteCategory } = require('./routes/categories');
 const { uploadImage, deleteImage } = require('./routes/uploads');
-const authRouter   = require('./routes/auth');
-const digestRouter = require('./routes/digestRoute');
+const authRouter              = require('./routes/auth');
+const digestRouter            = require('./routes/digestRoute');
+const { requireAuth }         = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -41,36 +42,36 @@ app.use('/api/auth', authRouter);
 app.use('/api/digest', digestRouter);
 
 // ── Boards ────────────────────────────────────────────────
-app.get('/api/boards', getBoards);
-app.post('/api/boards', createBoard);
-app.put('/api/boards/reorder', reorderBoards);   // must come before /:id
-app.put('/api/boards/:id', updateBoard);
-app.delete('/api/boards/:id', deleteBoard);
+app.get('/api/boards',          requireAuth, getBoards);
+app.post('/api/boards',         requireAuth, createBoard);
+app.put('/api/boards/reorder',  requireAuth, reorderBoards);   // must come before /:id
+app.put('/api/boards/:id',      requireAuth, updateBoard);
+app.delete('/api/boards/:id',   requireAuth, deleteBoard);
 
 // ── Columns ───────────────────────────────────────────────
-app.get('/api/boards/:boardId/columns', getColumns);
-app.post('/api/boards/:boardId/columns', createColumn);
-app.put('/api/columns/:id', updateColumn);
-app.delete('/api/columns/:id', deleteColumn);
+app.get('/api/boards/:boardId/columns',  requireAuth, getColumns);
+app.post('/api/boards/:boardId/columns', requireAuth, createColumn);
+app.put('/api/columns/:id',              requireAuth, updateColumn);
+app.delete('/api/columns/:id',           requireAuth, deleteColumn);
 
 // ── Cards ─────────────────────────────────────────────────
-app.get('/api/cards/search', searchCards);          // must come before /:id routes
-app.get('/api/boards/:boardId/cards', getCardsByBoard);
-app.get('/api/columns/:columnId/cards', getCardsByColumn);
-app.post('/api/cards', createCard);
-app.put('/api/cards/:id/move', moveCard);           // must come before /:id
-app.put('/api/cards/:id', updateCard);
-app.delete('/api/cards/:id', deleteCard);
+app.get('/api/cards/search',              requireAuth, searchCards);   // must come before /:id routes
+app.get('/api/boards/:boardId/cards',     requireAuth, getCardsByBoard);
+app.get('/api/columns/:columnId/cards',   requireAuth, getCardsByColumn);
+app.post('/api/cards',                    requireAuth, createCard);
+app.put('/api/cards/:id/move',            requireAuth, moveCard);      // must come before /:id
+app.put('/api/cards/:id',                 requireAuth, updateCard);
+app.delete('/api/cards/:id',              requireAuth, deleteCard);
 
 // ── Uploads ───────────────────────────────────────────────
-app.post('/api/uploads',           uploadImage);
-app.delete('/api/uploads/:filename', deleteImage);
+app.post('/api/uploads',             requireAuth, uploadImage);
+app.delete('/api/uploads/:filename', requireAuth, deleteImage);
 
 // ── Categories ────────────────────────────────────────────
-app.get('/api/categories',     getCategories);
-app.post('/api/categories',    createCategory);
-app.put('/api/categories/:id', updateCategory);
-app.delete('/api/categories/:id', deleteCategory);
+app.get('/api/categories',     requireAuth, getCategories);
+app.post('/api/categories',    requireAuth, createCategory);
+app.put('/api/categories/:id', requireAuth, updateCategory);
+app.delete('/api/categories/:id', requireAuth, deleteCategory);
 
 // ── Health ────────────────────────────────────────────────
 app.get('/api/health', (_req, res) =>

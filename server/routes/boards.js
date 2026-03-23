@@ -1,5 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
-const { readData, writeData } = require('../utils/db');
+const { supabaseAdmin } = require('../utils/supabase');
 
 const DEFAULT_COLUMNS = [
   { title: '🗂 Backlog',     order: 1 },
@@ -9,91 +8,100 @@ const DEFAULT_COLUMNS = [
   { title: '✅ Hecho',       order: 5 },
 ];
 
-const getBoards = (req, res) => {
-  try {
-    const data = readData();
-    res.json({ data: data.boards });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+const toBoard = (row) => ({
+  id:        row.id,
+  title:     row.title,
+  createdAt: row.created_at,
+});
+
+const getBoards = async (req, res) => {
+  const { data, error } = await supabaseAdmin
+    .from('boards')
+    .select('*')
+    .eq('organization_id', req.user.organizationId)
+    .order('order', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data: (data || []).map(toBoard) });
 };
 
-const createBoard = (req, res) => {
-  try {
-    const { title } = req.body;
-    if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+const createBoard = async (req, res) => {
+  const { title } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
 
-    const data = readData();
-    const board = {
-      id: `board-${uuidv4()}`,
-      title: title.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    data.boards.push(board);
+  const { data: existing } = await supabaseAdmin
+    .from('boards')
+    .select('order')
+    .eq('organization_id', req.user.organizationId)
+    .order('order', { ascending: false })
+    .limit(1);
 
-    // Seed default columns
-    const now = new Date().toISOString();
-    DEFAULT_COLUMNS.forEach((col) => {
-      data.columns.push({
-        id:        `col-${uuidv4()}`,
-        boardId:   board.id,
-        title:     col.title,
-        order:     col.order,
-        createdAt: now,
-      });
-    });
+  const maxOrder = existing?.[0]?.order ?? 0;
 
-    writeData(data);
-    res.status(201).json({ data: board });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const { data: board, error } = await supabaseAdmin
+    .from('boards')
+    .insert({ title: title.trim(), organization_id: req.user.organizationId, order: maxOrder + 1 })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const cols = DEFAULT_COLUMNS.map((col) => ({
+    board_id: board.id,
+    title:    col.title,
+    order:    col.order,
+  }));
+  await supabaseAdmin.from('columns').insert(cols);
+
+  res.status(201).json({ data: toBoard(board) });
 };
 
-const updateBoard = (req, res) => {
-  try {
-    const { title } = req.body;
-    const data = readData();
-    const idx = data.boards.findIndex((b) => b.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Board not found' });
+const updateBoard = async (req, res) => {
+  const { title } = req.body;
+  const update = {};
+  if (title?.trim()) update.title = title.trim();
 
-    if (title?.trim()) data.boards[idx].title = title.trim();
-    writeData(data);
-    res.json({ data: data.boards[idx] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const { data, error } = await supabaseAdmin
+    .from('boards')
+    .update(update)
+    .eq('id', req.params.id)
+    .eq('organization_id', req.user.organizationId)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data: toBoard(data) });
 };
 
-const deleteBoard = (req, res) => {
-  try {
-    const data = readData();
-    const idx = data.boards.findIndex((b) => b.id === req.params.id);
-    if (idx === -1) return res.status(404).json({ error: 'Board not found' });
+const deleteBoard = async (req, res) => {
+  const { error } = await supabaseAdmin
+    .from('boards')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('organization_id', req.user.organizationId);
 
-    data.boards.splice(idx, 1);
-    data.columns = data.columns.filter((c) => c.boardId !== req.params.id);
-    data.cards = data.cards.filter((c) => c.boardId !== req.params.id);
-    writeData(data);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
 };
 
-const reorderBoards = (req, res) => {
-  try {
-    const { ids } = req.body;
-    if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids must be an array' });
+const reorderBoards = async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids must be an array' });
 
-    const data = readData();
-    const idxMap = Object.fromEntries(ids.map((id, i) => [id, i]));
-    data.boards.sort((a, b) => (idxMap[a.id] ?? 999) - (idxMap[b.id] ?? 999));
-    writeData(data);
-    res.json({ data: data.boards });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  await Promise.all(
+    ids.map((id, i) =>
+      supabaseAdmin.from('boards').update({ order: i }).eq('id', id).eq('organization_id', req.user.organizationId)
+    )
+  );
+
+  const { data } = await supabaseAdmin
+    .from('boards')
+    .select('*')
+    .eq('organization_id', req.user.organizationId)
+    .order('order', { ascending: true });
+
+  res.json({ data: (data || []).map(toBoard) });
 };
 
 module.exports = { getBoards, createBoard, updateBoard, deleteBoard, reorderBoards };
