@@ -133,18 +133,20 @@ Formato ADR (Architecture Decision Records). Cada entrada documenta una decisió
 - Resend con cuenta LFi (`ibai.fernandez@lafabricaimaginaria.com`, dominio `lafabricaimaginaria.com`)
 - Supabase built-in email — descartado por rate limits y falta de personalización
 
-**Decisión provisional:** Migadu para pruebas y demo inicial. Resend con cuenta LFi para producción.
+**Decisión provisional:** Migadu (`smtp.migadu.com`, cuenta `info@ibaifernandez.com`) para desarrollo y demo. Resend con cuenta LFi para producción.
+
+**Estado actual (2026-03-23):** Railway usa Migadu. Resend está bloqueado porque la verificación del dominio `lafabricaimaginaria.com` depende del equipo de TI de LFi/PRONODO (Fernando Murillo), que aún no ha añadido los registros DNS necesarios.
 
 **Razones:**
-- Migadu ya funciona y permite validar el flujo completo hoy sin bloqueos
+- Migadu ya funciona y permite validar el flujo completo sin bloqueos externos
 - Resend es la solución correcta para producción: reputación de entrega, SDK moderno, logs, webhooks
-- La cuenta Resend LFi (`ibai.fernandez@lafabricaimaginaria.com`) ya está creada; solo falta verificar el dominio `lafabricaimaginaria.com` con Fernando Murillo (PRONODO)
+- La cuenta Resend LFi (`ibai.fernandez@lafabricaimaginaria.com`) ya está creada con API key generada; solo falta la verificación DNS
 
-**Consecuencias:** ⚠️ Antes de salir a producción, Fernando Murillo debe añadir los registros DNS de Resend para `lafabricaimaginaria.com`. Tras verificación, actualizar `.env`:
+**Consecuencias:** ⚠️ Antes de salir a producción, Fernando Murillo debe añadir los registros DNS de Resend para `lafabricaimaginaria.com`. Tras verificación, actualizar en Railway:
 ```
 SMTP_HOST=smtp.resend.com
 SMTP_USER=resend
-SMTP_PASS=re_CsHnbxZf_4jQSZ9X41BTCrryfXGVs9VGW
+SMTP_PASS=<nueva_api_key_resend>   # guardada por Ibai; obtener desde resend.com → API Keys
 SMTP_FROM="MyBoardLFi <myboard@lafabricaimaginaria.com>"
 DIGEST_TO=ibai@lfi.la
 ```
@@ -167,6 +169,41 @@ Y en Supabase → Authentication → Email → SMTP Settings: mismas credenciale
 - Los dominios son configurables en `server/routes/auth.js` sin tocar la base de datos
 
 **Consecuencias:** Si LFi incorpora colaboradores externos con otros dominios, se añade el dominio a `ALLOWED_DOMAINS` o se implementa un sistema de invitación por token (Phase 2+).
+
+---
+
+## ADR-009 — Eliminar policy RLS recursiva en public.users
+
+**Fecha:** 2026-03-23
+**Estado:** Aceptada
+
+**Contexto:** Tras crear el usuario `ibai@lfi.la` en Supabase Auth e insertar su fila en `public.users`, el login seguía fallando con "Error al obtener el perfil de usuario". La fila existía, las credenciales eran correctas y el `SUPABASE_SERVICE_ROLE_KEY` estaba bien configurado en Railway.
+
+**Causa raíz:** La policy RLS `"Admins ven todos los usuarios de su org"` realizaba una subconsulta a `public.users` para verificar el rol del usuario autenticado:
+```sql
+-- Política problemática (ya eliminada):
+CREATE POLICY "Admins ven todos los usuarios de su org"
+  ON public.users FOR SELECT
+  USING (
+    (SELECT role FROM public.users WHERE id = auth.uid()) IN ('admin', 'superadmin')
+  );
+```
+Esta subconsulta crea una recursión infinita: para leer `public.users` hay que ejecutar una policy que lee `public.users`, que ejecuta la policy, etc. PostgreSQL corta la recursión y devuelve un error que Supabase traduce como fallo silencioso.
+
+**Por qué afecta a service_role:** La `service_role` key normalmente bypasea RLS. Sin embargo, en este caso el cliente Supabase del servidor usaba `supabaseAdmin.auth.signInWithPassword()` que internamente puede operar con el contexto de sesión del usuario, no de servicio. Además, ciertas versiones del SDK no garantizan el bypass en todos los contextos de query encadenado.
+
+**Opciones consideradas:**
+1. Reescribir la policy usando una función `SECURITY DEFINER` que evite la recursión
+2. Eliminar la policy completamente (ya que `service_role` debería tener acceso total de todos modos)
+3. Añadir una tabla auxiliar de roles para evitar la autorreferencia
+
+**Decisión:** Eliminar la policy. En Phase 1 con un único tenant y un superadmin, la seguridad la gestiona el middleware JWT del servidor Express; no necesitamos granularidad RLS en `public.users`.
+
+```sql
+DROP POLICY IF EXISTS "Admins ven todos los usuarios de su org" ON public.users;
+```
+
+**Consecuencias:** Las queries a `public.users` desde el servidor funcionan correctamente. Si en el futuro se necesita RLS granular en `public.users`, implementar con función `SECURITY DEFINER` para evitar recursión.
 
 ---
 

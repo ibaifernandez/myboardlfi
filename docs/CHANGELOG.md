@@ -4,6 +4,29 @@ Registro de cambios por versión. Formato: [Keep a Changelog](https://keepachang
 
 ---
 
+## [0.4.0] — 2026-03-23 — Sesión 3: Fix login + seguridad de secretos
+
+### Bug crítico resuelto: login bloqueado por RLS recursiva
+- **Causa raíz:** La policy RLS `"Admins ven todos los usuarios de su org"` en `public.users` hacía una subconsulta a `public.users` para comprobar el rol del usuario autenticado, creando una recursión infinita que bloqueaba *todas* las consultas a la tabla, incluso las realizadas con la `service_role` key desde el servidor.
+- **Síntoma:** Login fallaba con "Error al obtener el perfil de usuario" aunque las credenciales fueran correctas y la fila existiera en `public.users`.
+- **Solución:** `DROP POLICY IF EXISTS "Admins ven todos los usuarios de su org" ON public.users;` ejecutado en Supabase SQL Editor. Ver ADR-009.
+
+### Cuenta corporativa de acceso
+- Creado usuario `ibai@lfi.la` en Supabase Auth → Authentication → Users (sin necesidad de email; contraseña asignada directamente desde el dashboard)
+- Insertada la fila correspondiente en `public.users` con rol `superadmin` y `organization_id` de LFi Agency
+- Confirmado que el login funciona correctamente tras eliminar la policy RLS
+
+### Seguridad — limpieza de secretos en repositorio
+- `docs/DECISIONS.md`: clave API real de Resend (`re_Cs...`) que estaba hardcodeada en el ADR-007 → redactada y sustituida por placeholder. **La clave debe ser revocada en resend.com y regenerada.**
+- `.env.example`: placeholders de SMTP neutralizados para no activar detectores de secretos (GitGuardian)
+- `docs/README-deploy.md`: URL real de Supabase (`jowtasxhnluqqcgkeoll.supabase.co`) sustituida por placeholder
+
+### Pendiente tras esta sesión
+- Revocar la clave Resend expuesta: resend.com → API Keys → revocar `re_Cs...` → crear nueva → actualizar en Railway
+- GitGuardian: marcar los 3 incidentes como resueltos (los 3 son falsos positivos de `.env.example`; el verdadero secreto era el del ADR-007)
+
+---
+
 ## [0.3.0] — 2026-03-18 — Sesión 2: Admin Digest + correcciones de flujo auth
 
 ### Admin Digest (reescritura completa)
